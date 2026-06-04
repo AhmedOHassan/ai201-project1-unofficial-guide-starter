@@ -9,114 +9,104 @@
 
 ## Domain
 
-<!-- What domain did you choose? Why is this knowledge valuable and hard to find through official channels? -->
+I'm building this around off-campus student housing near NC State, apartment reviews, hidden costs, neighborhood safety, and how realistic the Wolfline bus access actually is for each complex.
+
+The reason this is worth doing is that the official sources are basically useless for an honest decision. Apartment websites use staged photos, leave parking and utility fees off the headline rent, and their Google reviews are heavily padded by management. The information you actually need, which buildings have non-opening windows, which management company tows your car, what a 4x4 really costs once you add everything up, only lives in scattered Reddit threads on r/NCSU. It's all there, but it's spread across years of comments and nobody has put it in one place. A student trying to research this manually would have to read dozens of threads and cross-reference them by hand. That's exactly the kind of buried, real knowledge a RAG system is good for.
 
 ---
 
 ## Documents
 
-<!-- List your specific sources: URLs, subreddit names, forum threads, or file descriptions.
-     Aim for at least 10 sources that together cover different subtopics or perspectives within your domain. -->
+All ten sources are r/NCSU threads. I picked them so they don't overlap much, each one leans toward a different subtopic, so the corpus covers a real range of questions instead of ten threads all saying "I liked my place."
 
-| # | Source | Description | URL or location |
-|---|--------|-------------|-----------------|
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
-| 4 | | | |
-| 5 | | | |
-| 6 | | | |
-| 7 | | | |
-| 8 | | | |
-| 9 | | | |
-| 10 | | | |
+| #   | Source                                                              | File Name                                 | Description                                                                                         | URL or location                                                                                |
+| --- | ------------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 1   | What off campus apartments do you recommend?                        | 01_ncsu_general_recommendations.txt       | General overview + budget picks; maintenance responsiveness and walking commute near Dan Allen deck | https://www.reddit.com/r/NCSU/comments/1c4veee/what_off_campus_apartments_do_you_recommend_or/ |
+| 2   | [Safety Alert] Prowler / Casing Houses near Avent Ferry & Socket Dr | 02_avent_ferry_safety_prowler.txt         | Real neighborhood safety, doorbell footage, casing reports, police involvement in student areas     | https://www.reddit.com/r/NCSU/comments/1trnl1b/safety_alert_prowler_casing_houses_near_avent/  |
+| 3   | Off Campus Housing Advice Needed                                    | 03_hidden_fees_parking_costs.txt          | Hidden cost breakdown: $710 vs $900 base rents paired with ~$130/mo parking                         | https://www.reddit.com/r/NCSU/comments/12fsevy/off_campus_housing_advice_needed/               |
+| 4   | NC State Apartment Living                                           | 04_hillsborough_commuting_subleases.txt   | Hillsborough commute, code locks, appliance replacement policy, sublease room pricing               | https://www.reddit.com/r/NCSU/comments/1g87da8/nc_state_apartment_living/                      |
+| 5   | Off Campus Housing Mega thread                                      | 05_spotting_fake_corporate_reviews.txt    | How corporate managers manipulate Google review scores; spotting padded ratings                     | https://www.reddit.com/r/NCSU/comments/brtjus/off_campus_housing/                              |
+| 6   | Off Campus Housing: University Woods                                | 06_university_woods_leaks_budget.txt      | Older/cheaper builds, ceiling leaks but utilities included                                          | https://www.reddit.com/r/NCSU/comments/12bjdtd/off_campus_housing/                             |
+| 7   | Opinions on "The Wilde" Apartments                                  | 07_the_wilde_predatory_towing.txt         | Predatory towing contracts, vehicle damage, hostile management                                      | https://www.reddit.com/r/NCSU/comments/12tonfj/opinions_on_the_wilde_apartments/               |
+| 8   | Off-campus housing - Trinity properties                             | 08_trinity_properties_gorman_crossing.txt | Affordable complexes + transit; Gorman Crossing, grad-student housing Discord/WhatsApp channels     | https://www.reddit.com/r/NCSU/comments/w44ieh/offcampus_housing_trinity_properties/            |
+| 9   | No openable windows at The Standard                                 | 09_the_standard_window_safety_hazards.txt | Structural safety, fire hazard, smoke, lack of secondary exits in newer builds                      | https://www.reddit.com/r/NCSU/comments/1ts9070/no_openable_windows_at_the_standard/            |
+| 10  | Valentine Commons reviews                                           | 10_valentine_commons_infrastructure.txt   | Infrastructure, plumbing, broken elevators, Wi-Fi reliability, no overhead lighting                 | https://www.reddit.com/r/NCSU/comments/1no6n56/valentine_commons_reviews/                      |
 
 ---
 
 ## Chunking Strategy
 
-<!-- How will you split documents into chunks?
-     State your chunk size (in tokens or characters), overlap size, and explain why those
-     numbers fit the structure of your documents.
-     A review-heavy corpus warrants different chunking than a long FAQ. -->
+**Chunk size:** ~500–700 tokens
 
-**Chunk size:**
-
-**Overlap:**
+**Overlap:** ~100–150 tokens
 
 **Reasoning:**
+
+These threads are messy and conversational, not clean long-form guides. A typical useful comment names a specific apartment in the first sentence and then drops the actual fact, the parking pass amount, the towing company name, the leak, a few sentences later. So the apartment name and the evidence are usually in the same comment but separated by a couple of sentences.
+
+That's why I'm not doing sentence-level chunking: it would split the complex name away from the complaint, and a chunk like "the parking pass is $130 a month" with no apartment attached is useless to retrieve. A 500–700 token window is big enough to keep a whole comment (name + detail) together, and the 100–150 token overlap is insurance for the cases where a thought runs across a boundary, so I don't lose a fact that happens to land at the edge of a chunk. I'll use a recursive character splitter so it tries to break on paragraph/line boundaries first rather than cutting mid-sentence. If retrieval comes back with apartment names detached from their details, that's my signal the chunks are too small and I'll bump the size up.
 
 ---
 
 ## Retrieval Approach
 
-<!-- Which embedding model are you using (e.g., all-MiniLM-L6-v2 via sentence-transformers)?
-     How many chunks will you retrieve per query (top-k)?
-     If you were deploying this for real users and cost wasn't a constraint, what tradeoffs
-     would you weigh in choosing a different embedding model — context length, multilingual
-     support, accuracy on domain-specific text, latency? -->
+**Embedding model:** all-MiniLM-L6-v2 via sentence-transformers, runs locally, no API key, no rate limits. It's fine for short opinion text like this and keeps the whole pipeline free.
 
-**Embedding model:**
-
-**Top-k:**
+**Top-k:** Starting at k=5. Since facts about one complex are scattered across several threads, I want enough chunks that the relevant evidence actually makes it into the set, but not so many that I pull in loosely related comments about other apartments and confuse the LLM. I'll tune this once I see real retrieval results, if answers are missing context I'll raise it, if they're getting muddy I'll lower it.
 
 **Production tradeoff reflection:**
+
+If this were a real deployment and cost wasn't the issue, the main thing I'd reconsider is accuracy on domain-specific text. all-MiniLM is small and general; a larger embedding model would likely do better at telling apart two complexes that get discussed in very similar language. Context length matters less here because my chunks are short. Multilingual support isn't really needed, these threads are all English. The real tradeoff is latency and cost vs. retrieval precision: local MiniLM is instant and free but blunter; an API model is sharper but adds per-query cost and a network round-trip.
 
 ---
 
 ## Evaluation Plan
 
-<!-- List your 5 test questions with their expected correct answers.
-     Questions should be specific enough that you can judge whether the system's response
-     is right or wrong. "What are good dining halls?" is too vague.
-     "What do students say about wait times at [dining hall name] during lunch?" is testable. -->
-
-| # | Question | Expected answer |
-|---|----------|-----------------|
-| 1 | | |
-| 2 | | |
-| 3 | | |
-| 4 | | |
-| 5 | | |
+| #   | Question                                                                             | Expected answer                                                                                                                                                                                                 |
+| --- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | What are the hidden fees and parking costs at the budget complexes students mention? | Base rents around $710–$900, plus parking that runs ~$130/month on top, students warn the advertised rent isn't the real cost (sources: 03_hidden_fees_parking_costs.txt, 01_ncsu_general_recommendations.txt). |
+| 2   | Is there a safety concern reported near Avent Ferry and Socket Dr?                   | Yes, a prowler/casing-houses alert with doorbell-camera footage and police reports in the off-campus student area (source: 02_avent_ferry_safety_prowler.txt).                                                  |
+| 3   | Which management company do students say tows cars or damages vehicles?              | The Wilde, students report predatory towing contracts, vehicle damage, and hostile management (source: 07_the_wilde_predatory_towing.txt).                                                                      |
+| 4   | What's the window/fire-safety problem students raise about The Standard?             | The windows don't open, which students flag as a fire/smoke hazard with no good secondary exit in the newer build (source: 09_the_standard_window_safety_hazards.txt).                                          |
+| 5   | At Valentine Commons, what infrastructure problems do reviewers report?              | Plumbing issues, broken elevators, unreliable Wi-Fi, and no overhead room lighting (source: 10_valentine_commons_infrastructure.txt).                                                                           |
 
 ---
 
 ## Anticipated Challenges
 
-<!-- What could go wrong? Name at least two specific risks with reasoning.
-     Consider: noisy or inconsistent documents, missing source attribution, off-topic
-     retrieval, chunks that split key information across boundaries. -->
+1. **Apartment name and the fact getting split apart:** Because reviewers mention the complex early and the specific detail later, a bad chunk boundary can leave the dollar amount or the towing complaint floating with no apartment attached. That chunk would still embed and could get retrieved, but it'd answer the wrong question or none at all. My overlap is meant to soften this, but it's the failure I expect to actually hit, and I'll be watching for it when I inspect chunks.
 
-1.
+2. **Cross-complex confusion in retrieval:** A lot of these comments use near-identical language, "management never responds," "parking is a nightmare," about different buildings. Semantic search could easily pull a complaint about The Wilde when I asked about Valentine Commons, since the wording is so similar. If I see this, the fix is tighter chunks that keep the name bound to the detail, or adding the source/apartment as metadata I can lean on.
 
-2.
+3. **Source attribution on Reddit content:** Everything traces back to a thread, not a tidy document, so I need to make sure each chunk carries its source thread as metadata from the start, otherwise citations at the end will be guesswork.
 
 ---
 
 ## Architecture
 
-<!-- Draw a diagram of your pipeline showing the five stages:
-     Document Ingestion → Chunking → Embedding + Vector Store → Retrieval → Generation
-     Label each stage with the tool or library you're using.
-     You can use ASCII art, a Mermaid diagram, or embed a sketch as an image.
-     You'll use this diagram as context when prompting AI tools to implement each stage. -->
+```mermaid
+flowchart TD
+    A["<b>1. Document Ingestion</b><br/>10 r/NCSU threads saved as .txt<br/>clean: strip nav, ads, vote counts<br/><i>manual copy + Python loader</i>"]
+    B["<b>2. Chunking</b><br/>500-700 tokens, 100-150 overlap<br/>attach source thread metadata<br/><i>RecursiveCharacterTextSplitter</i>"]
+    C["<b>3. Embedding + Vector Store</b><br/>embed chunks, store with<br/>source + chunk-index metadata<br/><i>all-MiniLM-L6-v2 -> ChromaDB</i>"]
+    D["<b>4. Retrieval</b><br/>embed query, return top-k=5<br/>chunks + distances + sources<br/><i>ChromaDB query</i>"]
+    E["<b>5. Generation</b><br/>grounded prompt: answer ONLY from<br/>context, else 'not enough info'<br/>+ source citations<br/><i>Groq llama-3.3-70b-versatile</i>"]
+
+    A -->|"raw text per thread"| B
+    B -->|"chunks"| C
+    C -->|"query"| D
+    D -->|"retrieved chunks"| E
+```
 
 ---
 
 ## AI Tool Plan
 
-<!-- For each part of the pipeline below, describe:
-     - Which AI tool you plan to use (Claude, Copilot, ChatGPT, etc.)
-     - What you'll give it as input (which sections of this planning.md, which requirements)
-     - What you expect it to produce
-     - How you'll verify the output matches your spec
-
-     "I'll use AI to help me code" is not a plan.
-     "I'll give Claude my Chunking Strategy section and ask it to implement chunk_text()
-     with my specified chunk size and overlap" is a plan. -->
-
 **Milestone 3 — Ingestion and chunking:**
+I'll hand Claude this Documents section (so it knows the inputs are pasted-in Reddit threads saved as .txt, not live scrapes) plus my Chunking Strategy section and the diagram. I'll ask it to write a loader that reads each .txt file, a cleaning pass that strips Reddit boilerplate (vote counts, "Continue this thread", "Read more", share/award junk), and a `chunk_text()` using a recursive character splitter at my 500–700 token size with 100–150 overlap, attaching the source thread name to each chunk. What I'm checking: that it respects my chunk numbers, that it actually keeps source metadata, and that cleaning doesn't eat real review text. I'll print 5 chunks and read them myself before trusting it.
 
 **Milestone 4 — Embedding and retrieval:**
+I'll give Claude the Retrieval Approach section and the diagram and ask it to embed the chunks with all-MiniLM-L6-v2, load them into ChromaDB with source + chunk-index metadata, and write a `retrieve(query, k=5)` that returns chunks with distance scores and sources. If it uses any Chroma API I don't recognize I'll ask it to explain it. I'll verify by running 3 of my eval questions and checking the distances are below ~0.5 and the chunks are actually on-topic., not just sharing a couple words.
 
 **Milestone 5 — Generation and interface:**
+I'll prompt Claude with my grounding requirement (answer only from retrieved context, refuse with "I don't have enough information" otherwise), the output format I want (answer + list of source threads), and ask for a Groq `llama-3.3-70b-versatile` call plus the Gradio skeleton from the instructions. Before running it I'll read the system prompt to confirm grounding is actually enforced, and make sure sources are appended programmatically from metadata rather than left to the model to invent. I'll test it on an in-scope query, a near-miss, and one totally out-of-scope question to confirm it declines instead of bluffing.
