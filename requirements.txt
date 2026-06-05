@@ -3,6 +3,10 @@ chromadb>=0.6.0
 groq==0.15.0
 python-dotenv==1.0.1
 
+# Chunking (Milestone 3): recursive splitter + test runner
+langchain-text-splitters>=0.3.0
+pytest>=8.0
+
 # Query interface — add whichever you use for Milestone 5:
 # gradio>=6.9.0
 # streamlit>=1.40.0

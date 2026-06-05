@@ -36,15 +36,17 @@ All ten sources are r/NCSU threads. I picked them so they don't overlap much, ea
 
 ## Chunking Strategy
 
-**Chunk size:** ~500–700 tokens
+**Chunk size:** 240 tokens _(revised down from an original plan of 500–700 — see note below)_
 
-**Overlap:** ~100–150 tokens
+**Overlap:** 40 tokens _(originally 100–150)_
 
 **Reasoning:**
 
 These threads are messy and conversational, not clean long-form guides. A typical useful comment names a specific apartment in the first sentence and then drops the actual fact, the parking pass amount, the towing company name, the leak, a few sentences later. So the apartment name and the evidence are usually in the same comment but separated by a couple of sentences.
 
-That's why I'm not doing sentence-level chunking: it would split the complex name away from the complaint, and a chunk like "the parking pass is $130 a month" with no apartment attached is useless to retrieve. A 500–700 token window is big enough to keep a whole comment (name + detail) together, and the 100–150 token overlap is insurance for the cases where a thought runs across a boundary, so I don't lose a fact that happens to land at the edge of a chunk. I'll use a recursive character splitter so it tries to break on paragraph/line boundaries first rather than cutting mid-sentence. If retrieval comes back with apartment names detached from their details, that's my signal the chunks are too small and I'll bump the size up.
+That's why I'm not doing sentence-level chunking: it would split the complex name away from the complaint, and a chunk like "the parking pass is $130 a month" with no apartment attached is useless to retrieve. I use a recursive character splitter, so it tries to break on blank-line, then line, then sentence boundaries first rather than cutting mid-sentence, and I prepend each thread's title to its text so the apartment being discussed is present in the chunks.
+
+**Why the numbers changed (Milestone 3 finding):** I originally specified 500–700 tokens / 100–150 overlap. When I built the pipeline and ran chunk-inspection tests (`test_chunks.py`), two things failed: (1) it produced only **34 chunks** across 10 docs, below the ~50 floor the instructions warn about, meaning each chunk covered too much to match a specific query; and (2) **85% of chunks exceeded all-MiniLM-L6-v2's 256-token limit**, so their tails would be silently truncated at embedding time and never actually searched. I resized to **240 tokens** with **40-token overlap**. That yields **84 chunks**, median ~193 tokens, all within the embedding window. I also added a post-split merge step so a chunk that ends up being just a stranded "Comment by u/…" header gets glued back onto its comment body.
 
 ---
 
@@ -87,7 +89,7 @@ If this were a real deployment and cost wasn't the issue, the main thing I'd rec
 ```mermaid
 flowchart TD
     A["<b>1. Document Ingestion</b><br/>10 r/NCSU threads saved as .txt<br/>clean: strip nav, ads, vote counts<br/><i>manual copy + Python loader</i>"]
-    B["<b>2. Chunking</b><br/>500-700 tokens, 100-150 overlap<br/>attach source thread metadata<br/><i>RecursiveCharacterTextSplitter</i>"]
+    B["<b>2. Chunking</b><br/>240 tokens, 40 overlap<br/>attach source thread metadata<br/><i>RecursiveCharacterTextSplitter</i>"]
     C["<b>3. Embedding + Vector Store</b><br/>embed chunks, store with<br/>source + chunk-index metadata<br/><i>all-MiniLM-L6-v2 -> ChromaDB</i>"]
     D["<b>4. Retrieval</b><br/>embed query, return top-k=5<br/>chunks + distances + sources<br/><i>ChromaDB query</i>"]
     E["<b>5. Generation</b><br/>grounded prompt: answer ONLY from<br/>context, else 'not enough info'<br/>+ source citations<br/><i>Groq llama-3.3-70b-versatile</i>"]
@@ -103,7 +105,7 @@ flowchart TD
 ## AI Tool Plan
 
 **Milestone 3 — Ingestion and chunking:**
-I'll hand Claude this Documents section (so it knows the inputs are pasted-in Reddit threads saved as .txt, not live scrapes) plus my Chunking Strategy section and the diagram. I'll ask it to write a loader that reads each .txt file, a cleaning pass that strips Reddit boilerplate (vote counts, "Continue this thread", "Read more", share/award junk), and a `chunk_text()` using a recursive character splitter at my 500–700 token size with 100–150 overlap, attaching the source thread name to each chunk. What I'm checking: that it respects my chunk numbers, that it actually keeps source metadata, and that cleaning doesn't eat real review text. I'll print 5 chunks and read them myself before trusting it.
+I'll hand Claude this Documents section (so it knows the inputs are pasted-in Reddit threads saved as .txt, not live scrapes) plus my Chunking Strategy section and the diagram. I'll ask it to write a loader that reads each .txt file, a cleaning pass that strips Reddit boilerplate (vote counts, "Continue this thread", "Read more", share/award junk), and a chunking step using a recursive character splitter, attaching the source thread name to each chunk. What I'm checking: that it respects my chunk numbers, that it actually keeps source metadata, and that cleaning doesn't eat real review text. I'll print 5 chunks and read them myself before trusting it. _(Outcome: this is where I found the 500–700 token plan didn't fit the embedding model and revised to 240/40 — see the Chunking Strategy note.)_
 
 **Milestone 4 — Embedding and retrieval:**
 I'll give Claude the Retrieval Approach section and the diagram and ask it to embed the chunks with all-MiniLM-L6-v2, load them into ChromaDB with source + chunk-index metadata, and write a `retrieve(query, k=5)` that returns chunks with distance scores and sources. If it uses any Chroma API I don't recognize I'll ask it to explain it. I'll verify by running 3 of my eval questions and checking the distances are below ~0.5 and the chunks are actually on-topic., not just sharing a couple words.
