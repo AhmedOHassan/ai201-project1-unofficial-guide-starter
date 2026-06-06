@@ -13,6 +13,7 @@ Then open http://localhost:7860
 
 import gradio as gr
 
+from index import ensure_ready
 from query import ask
 
 EXAMPLES = [
@@ -69,4 +70,6 @@ with gr.Blocks(title="The Unofficial Guide — NC State Housing") as demo:
 
 
 if __name__ == "__main__":
+    count = ensure_ready()  # build chunks + index on first run; no-op once built
+    print(f"Index ready: {count} chunks. Launching UI…")
     demo.launch()

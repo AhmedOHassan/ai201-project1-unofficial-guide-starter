@@ -3,8 +3,9 @@ chromadb>=0.6.0
 groq==0.15.0
 python-dotenv==1.0.1
 
-# Chunking (Milestone 3): recursive splitter + test runner
+# Chunking (Milestone 3): recursive splitter + tokenizer for token-based sizing
 langchain-text-splitters>=0.3.0
+transformers>=4.40        # AutoTokenizer (all-MiniLM tokenizer) used in pipeline.py
 pytest>=8.0
 
 # Query interface (Milestone 5)

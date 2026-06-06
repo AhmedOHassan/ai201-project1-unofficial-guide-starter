@@ -82,6 +82,25 @@ def _load_chunks() -> list[dict]:
     return json.loads(CHUNKS_PATH.read_text(encoding="utf-8"))
 
 
+def ensure_ready() -> int:
+    """Make the system runnable from a cold start, building only what's missing.
+
+    1. If data/chunks.json doesn't exist yet, run the ingestion+chunking pipeline.
+    2. If the Chroma collection is empty or out of sync with the chunk count,
+       (re)embed and load it.
+    Idempotent and cheap on a warm start (no re-embedding when already built),
+    so app.py can safely call it on every launch.
+    """
+    if not CHUNKS_PATH.exists():
+        from pipeline import build_chunks, save_chunks
+        save_chunks(build_chunks())
+
+    n_chunks = len(_load_chunks())
+    if get_collection().count() != n_chunks:
+        return build_index()
+    return n_chunks
+
+
 def build_index() -> int:
     """(Re)build the Chroma collection from data/chunks.json. Returns count."""
     chunks = _load_chunks()
